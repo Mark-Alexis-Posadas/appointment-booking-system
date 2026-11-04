@@ -1,0 +1,339 @@
+"use client";
+import { useEffect, useState, type FormEvent } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+
+type Provider = { id: string; name: string };
+type Service = { id: string; name: string };
+type Appointment = {
+  id: string;
+  startsAt: string;
+  endsAt: string;
+  status: "BOOKED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
+  customer: { name: string; email: string };
+  provider: { user: { name: string } };
+  service: { name: string; price: string };
+};
+type Result = {
+  appointments?: Appointment[];
+  pagination?: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+  error?: string;
+};
+
+export function AdminAppointments({
+  providers,
+  services,
+  timezone,
+}: {
+  providers: Provider[];
+  services: Service[];
+  timezone: string;
+}) {
+  const params = useSearchParams();
+  const router = useRouter();
+  const [result, setResult] = useState<Result>({});
+  const [loading, setLoading] = useState(true);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const search = params.toString();
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    fetch(`/api/admin/appointments${search ? `?${search}` : ""}`)
+      .then(async (response) => {
+        const data: Result = await response.json();
+        if (!response.ok)
+          throw new Error(data.error ?? "Unable to load appointments.");
+        if (active) {
+          setResult(data);
+          setError(null);
+        }
+      })
+      .catch((reason: unknown) => {
+        if (active)
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : "Unable to load appointments.",
+          );
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [search]);
+
+  function applyFilters(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const next = new URLSearchParams();
+    for (const key of [
+      "dateFrom",
+      "dateTo",
+      "providerId",
+      "serviceId",
+      "status",
+      "search",
+    ] as const) {
+      const value = String(data.get(key) ?? "");
+      if (value) next.set(key, value);
+    }
+    router.push(`/admin/appointments${next.size ? `?${next.toString()}` : ""}`);
+  }
+
+  async function update(
+    id: string,
+    action: "cancel" | "COMPLETED" | "NO_SHOW",
+  ) {
+    const destructive = action === "cancel";
+    if (destructive && !window.confirm("Cancel this appointment?")) return;
+    setBusyId(id);
+    setError(null);
+    setNotice(null);
+    const response = destructive
+      ? await fetch(`/api/appointments/${encodeURIComponent(id)}/cancel`, {
+          method: "PATCH",
+        })
+      : await fetch(`/api/appointments/${encodeURIComponent(id)}/status`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: action }),
+        });
+    const data: { error?: string } = await response.json();
+    setBusyId(null);
+    if (!response.ok) {
+      setError(data.error ?? "Unable to update appointment.");
+      return;
+    }
+    setNotice(
+      destructive
+        ? "Appointment cancelled."
+        : `Appointment marked ${action.toLowerCase().replace("_", " ")}.`,
+    );
+    router.refresh();
+    const reload = await fetch(
+      `/api/admin/appointments${search ? `?${search}` : ""}`,
+    );
+    if (reload.ok) setResult((await reload.json()) as Result);
+  }
+
+  const page = result.pagination?.page ?? Number(params.get("page") ?? 1);
+  const totalPages = result.pagination?.totalPages ?? 1;
+  const pageHref = (nextPage: number) => {
+    const next = new URLSearchParams(search);
+    if (nextPage <= 1) next.delete("page");
+    else next.set("page", String(nextPage));
+    return `/admin/appointments${next.size ? `?${next.toString()}` : ""}`;
+  };
+  return (
+    <main>
+      <h1 className="text-3xl font-bold">Appointments</h1>
+      <p className="mt-2 text-slate-600">
+        Filter and manage all bookings. Times use {timezone}.
+      </p>
+      <form
+        onSubmit={applyFilters}
+        className="mt-6 grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4"
+      >
+        <label className="text-sm">
+          From
+          <input
+            name="dateFrom"
+            type="date"
+            defaultValue={params.get("dateFrom") ?? ""}
+            className="mt-1 block w-full rounded border p-2"
+          />
+        </label>
+        <label className="text-sm">
+          To
+          <input
+            name="dateTo"
+            type="date"
+            defaultValue={params.get("dateTo") ?? ""}
+            className="mt-1 block w-full rounded border p-2"
+          />
+        </label>
+        <label className="text-sm">
+          Provider
+          <select
+            name="providerId"
+            defaultValue={params.get("providerId") ?? ""}
+            className="mt-1 block w-full rounded border bg-white p-2"
+          >
+            <option value="">All providers</option>
+            {providers.map((provider) => (
+              <option key={provider.id} value={provider.id}>
+                {provider.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
+          Service
+          <select
+            name="serviceId"
+            defaultValue={params.get("serviceId") ?? ""}
+            className="mt-1 block w-full rounded border bg-white p-2"
+          >
+            <option value="">All services</option>
+            {services.map((service) => (
+              <option key={service.id} value={service.id}>
+                {service.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm">
+          Status
+          <select
+            name="status"
+            defaultValue={params.get("status") ?? ""}
+            className="mt-1 block w-full rounded border bg-white p-2"
+          >
+            <option value="">All statuses</option>
+            {["BOOKED", "CANCELLED", "COMPLETED", "NO_SHOW"].map((status) => (
+              <option key={status}>{status}</option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm sm:col-span-2">
+          Customer name or email
+          <input
+            name="search"
+            defaultValue={params.get("search") ?? ""}
+            className="mt-1 block w-full rounded border p-2"
+          />
+        </label>
+        <button className="self-end rounded bg-indigo-700 px-4 py-2 text-white">
+          Apply filters
+        </button>
+      </form>
+      {(notice || error) && (
+        <p
+          role="status"
+          className={`mt-4 rounded p-3 text-sm ${error ? "bg-red-50 text-red-800" : "bg-green-50 text-green-800"}`}
+        >
+          {error ?? notice}
+        </p>
+      )}
+      <div className="mt-6 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+        <table className="w-full min-w-[900px] text-left text-sm">
+          <thead className="bg-slate-50 text-slate-600">
+            <tr>
+              {[
+                "Date/time",
+                "Customer",
+                "Service",
+                "Provider",
+                "Price",
+                "Status",
+                "Actions",
+              ].map((heading) => (
+                <th key={heading} className="px-4 py-3">
+                  {heading}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              Array.from({ length: 5 }, (_, index) => (
+                <tr key={index}>
+                  <td colSpan={7} className="p-4">
+                    <div className="h-5 animate-pulse rounded bg-slate-100" />
+                  </td>
+                </tr>
+              ))
+            ) : (result.appointments ?? []).length === 0 ? (
+              <tr>
+                <td colSpan={7} className="p-8 text-center text-slate-500">
+                  No appointments match these filters.
+                </td>
+              </tr>
+            ) : (
+              result.appointments?.map((item) => (
+                <tr key={item.id} className="border-t border-slate-100">
+                  <td className="px-4 py-3">
+                    {new Intl.DateTimeFormat(undefined, {
+                      timeZone: timezone,
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    }).format(new Date(item.startsAt))}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="block">{item.customer.name}</span>
+                    <span className="text-xs text-slate-500">
+                      {item.customer.email}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">{item.service.name}</td>
+                  <td className="px-4 py-3">{item.provider.user.name}</td>
+                  <td className="px-4 py-3">
+                    ${Number(item.service.price).toFixed(2)}
+                  </td>
+                  <td className="px-4 py-3">{item.status.replace("_", " ")}</td>
+                  <td className="px-4 py-3">
+                    {item.status === "BOOKED" && (
+                      <div className="flex gap-3">
+                        <button
+                          disabled={busyId === item.id}
+                          onClick={() => void update(item.id, "cancel")}
+                          className="text-red-700 underline"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          disabled={busyId === item.id}
+                          onClick={() => void update(item.id, "COMPLETED")}
+                          className="text-green-700 underline"
+                        >
+                          Complete
+                        </button>
+                        <button
+                          disabled={busyId === item.id}
+                          onClick={() => void update(item.id, "NO_SHOW")}
+                          className="text-slate-700 underline"
+                        >
+                          No-show
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-4 flex items-center justify-between text-sm">
+        <span>
+          {result.pagination?.total ?? 0} appointments · page {page} of{" "}
+          {totalPages}
+        </span>
+        <div className="flex gap-2">
+          <button
+            disabled={page <= 1 || loading}
+            onClick={() => router.push(pageHref(page - 1))}
+            className="rounded border px-3 py-2 disabled:opacity-50"
+          >
+            Previous
+          </button>
+          <button
+            disabled={page >= totalPages || loading}
+            onClick={() => router.push(pageHref(page + 1))}
+            className="rounded border px-3 py-2 disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    </main>
+  );
+}

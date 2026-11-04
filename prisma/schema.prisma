@@ -1,0 +1,97 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  STAFF
+  ADMIN
+}
+
+enum AppointmentStatus {
+  BOOKED
+  CANCELLED
+  COMPLETED
+  NO_SHOW
+}
+
+model User {
+  id            String        @id @default(cuid())
+  name          String
+  email         String        @unique
+  passwordHash  String
+  role          Role          @default(CUSTOMER)
+  createdAt     DateTime      @default(now()) @db.Timestamptz(3)
+  provider      Provider?
+  appointments  Appointment[] @relation("CustomerAppointments")
+}
+
+model Service {
+  id              String        @id @default(cuid())
+  name            String
+  durationMinutes Int
+  price           Decimal       @db.Decimal(10, 2)
+  isActive         Boolean       @default(true)
+  providers        Provider[]    @relation("ProviderServices")
+  appointments     Appointment[]
+}
+
+model Provider {
+  id             String         @id @default(cuid())
+  userId         String         @unique
+  bio            String?
+  isActive       Boolean        @default(true)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  services       Service[]      @relation("ProviderServices")
+  workingHours   WorkingHours[]
+  timeOff        TimeOff[]
+  appointments   Appointment[]
+
+  @@index([userId])
+}
+
+model WorkingHours {
+  id         String   @id @default(cuid())
+  providerId String
+  weekday    Int
+  startTime  String
+  endTime    String
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId])
+}
+
+model TimeOff {
+  id         String   @id @default(cuid())
+  providerId String
+  startsAt   DateTime @db.Timestamptz(3)
+  endsAt     DateTime @db.Timestamptz(3)
+  reason     String?
+  provider   Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId])
+}
+
+model Appointment {
+  id         String            @id @default(cuid())
+  customerId String
+  providerId String
+  serviceId  String
+  startsAt   DateTime          @db.Timestamptz(3)
+  endsAt     DateTime          @db.Timestamptz(3)
+  status     AppointmentStatus @default(BOOKED)
+  createdAt  DateTime          @default(now()) @db.Timestamptz(3)
+  customer   User              @relation("CustomerAppointments", fields: [customerId], references: [id], onDelete: Restrict)
+  provider   Provider          @relation(fields: [providerId], references: [id], onDelete: Restrict)
+  service    Service           @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  @@index([customerId])
+  @@index([providerId])
+  @@index([serviceId])
+}
