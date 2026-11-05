@@ -10,6 +10,8 @@
     "test": "vitest run",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "db:create-admin": "tsx prisma/create-admin.ts",
+    "db:reset-staff-password": "tsx prisma/prisma/reset-passwords.ts",
     "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {

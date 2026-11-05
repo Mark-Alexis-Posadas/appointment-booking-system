@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
+import { Button, Notice, PageHeader } from "@/components/ui";
 
 type Range = { startTime: string; endTime: string };
 type WorkingHour = Range & { id: string; weekday: number };
@@ -78,6 +79,8 @@ export function ScheduleEditor({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [removingTimeOffId, setRemovingTimeOffId] = useState<string | null>(null);
+  const removingTimeOff = timeOff.find((period) => period.id === removingTimeOffId);
 
   function updateRange(
     weekday: number,
@@ -202,7 +205,6 @@ export function ScheduleEditor({
   }
 
   async function removeTimeOff(id: string) {
-    if (!window.confirm("Remove this time-off period?")) return;
     setError(null);
     setMessage(null);
     try {
@@ -218,6 +220,7 @@ export function ScheduleEditor({
       if (!response.ok)
         throw new Error(result.error ?? "Unable to remove time off.");
       setTimeOff((current) => current.filter((period) => period.id !== id));
+      setRemovingTimeOffId(null);
       setMessage("Time off removed.");
     } catch (reason) {
       setError(
@@ -234,30 +237,22 @@ export function ScheduleEditor({
       >
         ← Providers
       </Link>
-      <h1 className="mt-3 text-3xl font-bold">Schedule: {provider.name}</h1>
-      <p className="mt-2 text-sm text-slate-600">
-        Weekly times use the business timezone: <strong>{timezone}</strong>.
-      </p>
+      <PageHeader title={`Schedule: ${provider.name}`} description={`Weekly times use the business timezone: ${timezone}.`} />
       {(message || error) && (
-        <p
-          role="status"
-          className={`mt-4 rounded p-3 text-sm ${error ? "bg-red-50 text-red-800" : "bg-green-50 text-green-800"}`}
-        >
-          {error ?? message}
-        </p>
+        <Notice kind={error ? "error" : "success"} role={error ? "alert" : "status"}>{error ?? message}</Notice>
       )}
       <form onSubmit={saveSchedule} className="mt-6 space-y-3">
         {days.map((day) => (
           <section
             key={day.weekday}
-            className="rounded-lg border border-slate-200 bg-white p-4"
+            className="surface-card p-4"
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="font-semibold">{weekdays[day.weekday]}</h2>
               <button
                 type="button"
                 onClick={() => addRange(day.weekday)}
-                className="text-sm text-indigo-700 underline"
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50"
               >
                 Add time range
               </button>
@@ -269,7 +264,7 @@ export function ScheduleEditor({
                 {day.ranges.map((range, index) => (
                   <div
                     key={`${day.weekday}-${index}`}
-                    className="flex flex-wrap items-end gap-2"
+                    className="flex flex-wrap items-end gap-3 rounded-lg bg-slate-50 p-3"
                   >
                     <label className="text-xs text-slate-600">
                       From
@@ -286,7 +281,7 @@ export function ScheduleEditor({
                             event.target.value,
                           )
                         }
-                        className="mt-1 block rounded border p-2 text-sm"
+                        className="mt-1 block rounded-lg border p-2.5 text-sm"
                       />
                     </label>
                     <label className="text-xs text-slate-600">
@@ -304,13 +299,13 @@ export function ScheduleEditor({
                             event.target.value,
                           )
                         }
-                        className="mt-1 block rounded border p-2 text-sm"
+                        className="mt-1 block rounded-lg border p-2.5 text-sm"
                       />
                     </label>
                     <button
                       type="button"
                       onClick={() => removeRange(day.weekday, index)}
-                      className="px-2 py-2 text-sm text-red-700 underline"
+                      className="rounded-lg px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
                     >
                       Remove
                     </button>
@@ -320,21 +315,16 @@ export function ScheduleEditor({
             )}
           </section>
         ))}
-        <button
-          disabled={busy}
-          className="rounded bg-indigo-700 px-4 py-2 text-white"
-        >
-          {busy ? "Saving…" : "Save working hours"}
-        </button>
+        <Button disabled={busy}>{busy ? "Saving…" : "Save working hours"}</Button>
       </form>
       <section className="mt-10">
-        <h2 className="text-2xl font-bold">Time off</h2>
+        <h2 className="section-title text-xl">Time off</h2>
         <p className="mt-1 text-sm text-slate-600">
           Dates are entered as local business time and saved as UTC instants.
         </p>
         <form
           onSubmit={addTimeOff}
-          className="mt-4 grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2"
+          className="surface-card mt-4 grid gap-3 p-4 sm:grid-cols-2"
         >
           <label className="text-sm">
             Starts
@@ -342,7 +332,7 @@ export function ScheduleEditor({
               name="startsAt"
               type="datetime-local"
               required
-              className="mt-1 block w-full rounded border p-2"
+              className="mt-1 block w-full rounded-lg border p-2.5"
             />
           </label>
           <label className="text-sm">
@@ -351,7 +341,7 @@ export function ScheduleEditor({
               name="endsAt"
               type="datetime-local"
               required
-              className="mt-1 block w-full rounded border p-2"
+              className="mt-1 block w-full rounded-lg border p-2.5"
             />
           </label>
           <label className="text-sm sm:col-span-2">
@@ -359,20 +349,15 @@ export function ScheduleEditor({
             <input
               name="reason"
               maxLength={500}
-              className="mt-1 block w-full rounded border p-2"
+              className="mt-1 block w-full rounded-lg border p-2.5"
             />
           </label>
-          <button
-            disabled={busy}
-            className="w-fit rounded bg-indigo-700 px-4 py-2 text-white"
-          >
-            {busy ? "Saving…" : "Add time off"}
-          </button>
+          <Button disabled={busy} className="w-fit">{busy ? "Saving…" : "Add time off"}</Button>
         </form>
         {timeOff.length === 0 ? (
           <p className="mt-4 text-sm text-slate-500">No time off scheduled.</p>
         ) : (
-          <ul className="mt-4 divide-y rounded-lg border border-slate-200 bg-white">
+          <ul className="surface-card mt-4 divide-y divide-slate-100">
             {timeOff.map((period) => (
               <li
                 key={period.id}
@@ -388,8 +373,8 @@ export function ScheduleEditor({
                   </p>
                 </div>
                 <button
-                  onClick={() => void removeTimeOff(period.id)}
-                  className="text-sm text-red-700 underline"
+                  onClick={() => setRemovingTimeOffId(period.id)}
+                  className="rounded-lg px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
                 >
                   Remove
                 </button>
@@ -398,6 +383,7 @@ export function ScheduleEditor({
           </ul>
         )}
       </section>
+      {removingTimeOff && <div role="dialog" aria-modal="true" aria-labelledby="remove-timeoff-title" className="dialog-backdrop"><section className="dialog-panel max-w-md"><h2 id="remove-timeoff-title" className="text-lg font-bold">Remove time off?</h2><p className="mt-2 text-sm text-slate-600">This will make {new Date(removingTimeOff.startsAt).toLocaleString()}–{new Date(removingTimeOff.endsAt).toLocaleString()} available for new bookings.</p>{error && <Notice kind="error" role="alert">{error}</Notice>}<div className="mt-6 flex flex-col-reverse justify-end gap-3 sm:flex-row"><Button type="button" variant="secondary" disabled={busy} onClick={() => setRemovingTimeOffId(null)}>Keep time off</Button><Button type="button" variant="danger" disabled={busy} onClick={() => void removeTimeOff(removingTimeOff.id)}>{busy ? "Removing…" : "Remove time off"}</Button></div></section></div>}
     </div>
   );
 }

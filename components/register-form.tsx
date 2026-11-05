@@ -1,6 +1,7 @@
 "use client";
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui";
 
 export function RegisterForm({ callbackUrl }: { callbackUrl?: string }) {
   const router = useRouter();
@@ -19,11 +20,11 @@ export function RegisterForm({ callbackUrl }: { callbackUrl?: string }) {
     } catch { setError("Unable to reach the server. Please try again."); }
     finally { setBusy(false); }
   }
-  return <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+  return <form onSubmit={handleSubmit} className="mt-7 space-y-4">
     <label className="block text-sm font-medium">Name<input required minLength={2} maxLength={100} name="name" autoComplete="name" className="mt-1 w-full rounded border border-slate-300 bg-white p-2" /></label>
     <label className="block text-sm font-medium">Email<input required type="email" name="email" autoComplete="email" className="mt-1 w-full rounded border border-slate-300 bg-white p-2" /></label>
     <label className="block text-sm font-medium">Password<input required minLength={8} type="password" name="password" autoComplete="new-password" className="mt-1 w-full rounded border border-slate-300 bg-white p-2" /></label>
-    {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-    <button disabled={busy} className="w-full rounded bg-indigo-700 p-2 font-semibold text-white disabled:opacity-60" type="submit">{busy ? "Creating account…" : "Create account"}</button>
+    {error && <p role="alert" className="notice notice-error">{error}</p>}
+    <Button disabled={busy} className="w-full" type="submit">{busy ? "Creating account…" : "Create account"}</Button>
   </form>;
 }

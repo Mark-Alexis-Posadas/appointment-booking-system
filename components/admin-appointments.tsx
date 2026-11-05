@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, type FormEvent } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { PageHeader, StatusBadge } from "@/components/ui";
 
 type Provider = { id: string; name: string };
 type Service = { id: string; name: string };
@@ -40,7 +41,16 @@ export function AdminAppointments({
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<Appointment | null>(null);
   const search = params.toString();
+  useEffect(() => {
+    if (!cancelTarget) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape" && !busyId) setCancelTarget(null);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [cancelTarget, busyId]);
   useEffect(() => {
     let active = true;
     setLoading(true);
@@ -93,35 +103,55 @@ export function AdminAppointments({
     action: "cancel" | "COMPLETED" | "NO_SHOW",
   ) {
     const destructive = action === "cancel";
-    if (destructive && !window.confirm("Cancel this appointment?")) return;
+    if (destructive) {
+      const appointment = result.appointments?.find((item) => item.id === id);
+      if (appointment) setCancelTarget(appointment);
+      return;
+    }
     setBusyId(id);
     setError(null);
     setNotice(null);
-    const response = destructive
-      ? await fetch(`/api/appointments/${encodeURIComponent(id)}/cancel`, {
-          method: "PATCH",
-        })
-      : await fetch(`/api/appointments/${encodeURIComponent(id)}/status`, {
+    try {
+      const response = await fetch(`/api/appointments/${encodeURIComponent(id)}/status`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ status: action }),
         });
-    const data: { error?: string } = await response.json();
-    setBusyId(null);
-    if (!response.ok) {
-      setError(data.error ?? "Unable to update appointment.");
-      return;
+      const data: { error?: string } = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Unable to update appointment.");
+      setNotice(`Appointment marked ${action.toLowerCase().replace("_", " ")}.`);
+      router.refresh();
+      const reload = await fetch(`/api/admin/appointments${search ? `?${search}` : ""}`);
+      if (!reload.ok) throw new Error("Appointment updated, but the list could not be refreshed.");
+      setResult((await reload.json()) as Result);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to update appointment.");
+    } finally {
+      setBusyId(null);
     }
-    setNotice(
-      destructive
-        ? "Appointment cancelled."
-        : `Appointment marked ${action.toLowerCase().replace("_", " ")}.`,
-    );
-    router.refresh();
-    const reload = await fetch(
-      `/api/admin/appointments${search ? `?${search}` : ""}`,
-    );
-    if (reload.ok) setResult((await reload.json()) as Result);
+  }
+
+  async function confirmCancel() {
+    if (!cancelTarget) return;
+    const id = cancelTarget.id;
+    setBusyId(id);
+    setError(null);
+    setNotice(null);
+    try {
+      const response = await fetch(`/api/appointments/${encodeURIComponent(id)}/cancel`, { method: "PATCH" });
+      const data: { error?: string } = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Unable to cancel appointment.");
+      setNotice("Appointment cancelled.");
+      setCancelTarget(null);
+      router.refresh();
+      const reload = await fetch(`/api/admin/appointments${search ? `?${search}` : ""}`);
+      if (!reload.ok) throw new Error("Appointment cancelled, but the list could not be refreshed.");
+      setResult((await reload.json()) as Result);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to cancel appointment.");
+    } finally {
+      setBusyId(null);
+    }
   }
 
   const page = result.pagination?.page ?? Number(params.get("page") ?? 1);
@@ -134,13 +164,10 @@ export function AdminAppointments({
   };
   return (
     <main>
-      <h1 className="text-3xl font-bold">Appointments</h1>
-      <p className="mt-2 text-slate-600">
-        Filter and manage all bookings. Times use {timezone}.
-      </p>
+      <PageHeader title="Appointments" description={`Filter and manage all bookings. Times use ${timezone}.`} />
       <form
         onSubmit={applyFilters}
-        className="mt-6 grid gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4"
+        className="surface-card mt-6 grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-4"
       >
         <label className="text-sm">
           From
@@ -211,19 +238,19 @@ export function AdminAppointments({
             className="mt-1 block w-full rounded border p-2"
           />
         </label>
-        <button className="self-end rounded bg-indigo-700 px-4 py-2 text-white">
+        <button className="min-h-10 self-end rounded-lg bg-indigo-700 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-800">
           Apply filters
         </button>
       </form>
-      {(notice || error) && (
+      {(notice || error) && !cancelTarget && (
         <p
           role="status"
-          className={`mt-4 rounded p-3 text-sm ${error ? "bg-red-50 text-red-800" : "bg-green-50 text-green-800"}`}
+          className={`notice mt-4 ${error ? "notice-error" : "notice-success"}`}
         >
           {error ?? notice}
         </p>
       )}
-      <div className="mt-6 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+      <div className="table-wrap mt-6">
         <table className="w-full min-w-[900px] text-left text-sm">
           <thead className="bg-slate-50 text-slate-600">
             <tr>
@@ -278,28 +305,28 @@ export function AdminAppointments({
                   <td className="px-4 py-3">
                     ${Number(item.service.price).toFixed(2)}
                   </td>
-                  <td className="px-4 py-3">{item.status.replace("_", " ")}</td>
+                  <td className="px-4 py-3"><StatusBadge status={item.status}/></td>
                   <td className="px-4 py-3">
                     {item.status === "BOOKED" && (
-                      <div className="flex gap-3">
+                      <div className="flex flex-wrap gap-2">
                         <button
                           disabled={busyId === item.id}
                           onClick={() => void update(item.id, "cancel")}
-                          className="text-red-700 underline"
+                          className="rounded-md px-2 py-1 text-red-700 hover:bg-red-50"
                         >
                           Cancel
                         </button>
                         <button
                           disabled={busyId === item.id}
                           onClick={() => void update(item.id, "COMPLETED")}
-                          className="text-green-700 underline"
+                          className="rounded-md px-2 py-1 text-green-700 hover:bg-green-50"
                         >
                           Complete
                         </button>
                         <button
                           disabled={busyId === item.id}
                           onClick={() => void update(item.id, "NO_SHOW")}
-                          className="text-slate-700 underline"
+                          className="rounded-md px-2 py-1 text-slate-700 hover:bg-slate-100"
                         >
                           No-show
                         </button>
@@ -312,6 +339,7 @@ export function AdminAppointments({
           </tbody>
         </table>
       </div>
+      {cancelTarget && <div role="dialog" aria-modal="true" aria-labelledby="admin-cancel-title" className="dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busyId) setCancelTarget(null); }}><section className="dialog-panel max-w-md"><h2 id="admin-cancel-title" className="text-lg font-bold">Cancel appointment?</h2><p className="mt-2 text-sm text-slate-600">Cancel {cancelTarget.customer.name}&apos;s {cancelTarget.service.name} appointment?</p>{error && <p role="alert" className="notice notice-error mt-4">{error}</p>}<div className="mt-6 flex flex-col-reverse justify-end gap-3 sm:flex-row"><button type="button" disabled={Boolean(busyId)} onClick={() => setCancelTarget(null)} className="rounded-lg border border-slate-200 px-4 py-2">Keep appointment</button><button type="button" disabled={Boolean(busyId)} onClick={() => void confirmCancel()} className="rounded-lg bg-red-700 px-4 py-2 font-semibold text-white disabled:opacity-50">{busyId ? "Cancelling…" : "Cancel appointment"}</button></div></section></div>}
       <div className="mt-4 flex items-center justify-between text-sm">
         <span>
           {result.pagination?.total ?? 0} appointments · page {page} of{" "}
