@@ -332,6 +332,7 @@ export function ScheduleEditor({
               name="startsAt"
               type="datetime-local"
               required
+              aria-label="Time off starts"
               className="mt-1 block w-full rounded-lg border p-2.5"
             />
           </label>
@@ -341,6 +342,7 @@ export function ScheduleEditor({
               name="endsAt"
               type="datetime-local"
               required
+              aria-label="Time off ends"
               className="mt-1 block w-full rounded-lg border p-2.5"
             />
           </label>
@@ -349,6 +351,7 @@ export function ScheduleEditor({
             <input
               name="reason"
               maxLength={500}
+              placeholder="Optional reason for time off"
               className="mt-1 block w-full rounded-lg border p-2.5"
             />
           </label>

@@ -18,8 +18,8 @@ export function LoginForm({ callbackUrl }: { callbackUrl?: string }) {
     finally { setBusy(false); }
   }
   return <form onSubmit={handleSubmit} className="mt-7 space-y-4">
-    <label className="block text-sm font-medium">Email<input required type="email" name="email" autoComplete="email" className="mt-1 w-full rounded border border-slate-300 bg-white p-2" /></label>
-    <label className="block text-sm font-medium">Password<input required type="password" name="password" autoComplete="current-password" className="mt-1 w-full rounded border border-slate-300 bg-white p-2" /></label>
+    <label className="block text-sm font-medium">Email<input required type="email" name="email" autoComplete="email" placeholder="you@example.com" className="mt-1 w-full rounded border border-slate-300 bg-white p-2" /></label>
+    <label className="block text-sm font-medium">Password<input required type="password" name="password" autoComplete="current-password" placeholder="Enter your password" className="mt-1 w-full rounded border border-slate-300 bg-white p-2" /></label>
     {error && <p role="alert" className="notice notice-error">{error}</p>}
     <Button disabled={busy} className="w-full" type="submit">{busy ? "Logging in…" : "Log in"}</Button>
   </form>;

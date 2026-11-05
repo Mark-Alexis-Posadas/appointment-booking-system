@@ -235,6 +235,7 @@ export function AdminAppointments({
           <input
             name="search"
             defaultValue={params.get("search") ?? ""}
+            placeholder="Name or email"
             className="mt-1 block w-full rounded border p-2"
           />
         </label>

@@ -21,9 +21,9 @@ export function RegisterForm({ callbackUrl }: { callbackUrl?: string }) {
     finally { setBusy(false); }
   }
   return <form onSubmit={handleSubmit} className="mt-7 space-y-4">
-    <label className="block text-sm font-medium">Name<input required minLength={2} maxLength={100} name="name" autoComplete="name" className="mt-1 w-full rounded border border-slate-300 bg-white p-2" /></label>
-    <label className="block text-sm font-medium">Email<input required type="email" name="email" autoComplete="email" className="mt-1 w-full rounded border border-slate-300 bg-white p-2" /></label>
-    <label className="block text-sm font-medium">Password<input required minLength={8} type="password" name="password" autoComplete="new-password" className="mt-1 w-full rounded border border-slate-300 bg-white p-2" /></label>
+    <label className="block text-sm font-medium">Name<input required minLength={2} maxLength={100} name="name" autoComplete="name" placeholder="Your name" className="mt-1 w-full rounded border border-slate-300 bg-white p-2" /></label>
+    <label className="block text-sm font-medium">Email<input required type="email" name="email" autoComplete="email" placeholder="you@example.com" className="mt-1 w-full rounded border border-slate-300 bg-white p-2" /></label>
+    <label className="block text-sm font-medium">Password<input required minLength={8} type="password" name="password" autoComplete="new-password" placeholder="At least 8 characters" className="mt-1 w-full rounded border border-slate-300 bg-white p-2" /></label>
     {error && <p role="alert" className="notice notice-error">{error}</p>}
     <Button disabled={busy} className="w-full" type="submit">{busy ? "Creating account…" : "Create account"}</Button>
   </form>;
