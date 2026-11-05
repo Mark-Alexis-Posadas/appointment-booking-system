@@ -25,7 +25,7 @@ export async function PATCH(request: Request, { params }: Context) {
     return NextResponse.json({ appointment, businessTimezone: getAvailabilityConfig().businessTimezone });
   } catch (error) {
     if (error instanceof BookingError) return NextResponse.json({ error: error.message }, { status: error.status });
-    if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === "P2004" || error.code === "P2034" || error.code === "P2002")) return NextResponse.json({ error: "That time was just taken. Choose another available time." }, { status: 409 });
+    if (error instanceof Prisma.PrismaClientKnownRequestError && (error.code === "P2004" || error.code === "P2034" || error.code === "P2002")) return NextResponse.json({ error: "The selected time slot is no longer available. Please select another schedule." }, { status: 409 });
     console.error("Appointment reschedule failed", error);
     return NextResponse.json({ error: "Unable to reschedule appointment right now." }, { status: 500 });
   }

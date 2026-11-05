@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { readJson, requireAdminApi } from "@/lib/admin-api";
 import { serviceSchema } from "@/lib/schemas";
+import { lockProviderRows, lockServiceRows } from "@/lib/prisma-booking";
 
 export async function GET() {
   const access = await requireAdminApi(); if (!access.ok) return access.response;
@@ -27,10 +28,22 @@ export async function PATCH(request: Request) {
   const parsed = serviceSchema.safeParse(parsedBody);
   if (!id || !parsed.success) return NextResponse.json({ error: "Invalid service details.", details: parsed.success ? undefined : parsed.error.flatten().fieldErrors }, { status: 400 });
   try {
-    const service = await prisma.service.update({ where: { id }, data: parsed.data });
+    const result = await prisma.$transaction(async (tx) => {
+      const providers = await tx.provider.findMany({ where: { services: { some: { id } } }, select: { id: true }, orderBy: { id: "asc" } });
+      const lockedProviders = await lockProviderRows(tx, providers.map(({ id: providerId }) => providerId));
+      if (lockedProviders.length !== providers.length) return { kind: "conflict" as const };
+      const lockedServices = await lockServiceRows(tx, [id]);
+      if (!lockedServices.length) return { kind: "not-found" as const };
+      const service = await tx.service.update({ where: { id }, data: parsed.data });
+      return { kind: "updated" as const, service };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    if (result.kind === "not-found") return NextResponse.json({ error: "Service not found." }, { status: 404 });
+    if (result.kind === "conflict") return NextResponse.json({ error: "Provider availability changed at the same time. Refresh and try again." }, { status: 409 });
+    const { service } = result;
     return NextResponse.json({ service });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") return NextResponse.json({ error: "Service not found." }, { status: 404 });
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return NextResponse.json({ error: "Provider availability changed at the same time. Refresh and try again." }, { status: 409 });
     throw error;
   }
 }
@@ -41,9 +54,26 @@ export async function DELETE(request: Request) {
   const input = body.data as Record<string, unknown>;
   const id = typeof input.id === "string" ? input.id : "";
   if (!id) return NextResponse.json({ error: "Service id is required." }, { status: 400 });
-  const service = await prisma.service.findUnique({ where: { id }, include: { _count: { select: { appointments: true } } } });
-  if (!service) return NextResponse.json({ error: "Service not found." }, { status: 404 });
-  if (service._count.appointments > 0) return NextResponse.json({ error: "This service has appointments and cannot be deleted. Deactivate it instead." }, { status: 409 });
-  await prisma.service.delete({ where: { id } });
-  return NextResponse.json({ success: true });
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const providers = await tx.provider.findMany({ where: { services: { some: { id } } }, select: { id: true }, orderBy: { id: "asc" } });
+      const lockedProviders = await lockProviderRows(tx, providers.map(({ id: providerId }) => providerId));
+      if (lockedProviders.length !== providers.length) return { kind: "conflict" as const };
+      const lockedServices = await lockServiceRows(tx, [id]);
+      if (!lockedServices.length) return { kind: "not-found" as const };
+      const service = await tx.service.findUnique({ where: { id }, select: { _count: { select: { appointments: true } } } });
+      if (!service) return { kind: "not-found" as const };
+      if (service._count.appointments > 0) return { kind: "has-appointments" as const };
+      await tx.service.delete({ where: { id } });
+      return { kind: "deleted" as const };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    if (result.kind === "not-found") return NextResponse.json({ error: "Service not found." }, { status: 404 });
+    if (result.kind === "conflict") return NextResponse.json({ error: "Provider availability changed at the same time. Refresh and try again." }, { status: 409 });
+    if (result.kind === "has-appointments") return NextResponse.json({ error: "This service has appointments and cannot be deleted. Deactivate it instead." }, { status: 409 });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return NextResponse.json({ error: "Provider availability changed at the same time. Refresh and try again." }, { status: 409 });
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025") return NextResponse.json({ error: "Service not found." }, { status: 404 });
+    throw error;
+  }
 }

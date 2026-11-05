@@ -2,8 +2,28 @@ import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import type { BookingExecutor, BookingTransaction } from "@/lib/booking";
 
+export async function lockProviderRows(tx: Prisma.TransactionClient, providerIds: readonly string[]): Promise<string[]> {
+  const ids = [...new Set(providerIds)].sort();
+  if (ids.length === 0) return [];
+  const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`SELECT "id" FROM "Provider" WHERE "id" IN (${Prisma.join(ids)}) ORDER BY "id" FOR UPDATE`);
+  return rows.map(({ id }) => id);
+}
+
+export async function lockServiceRows(tx: Prisma.TransactionClient, serviceIds: readonly string[]): Promise<string[]> {
+  const ids = [...new Set(serviceIds)].sort();
+  if (ids.length === 0) return [];
+  const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`SELECT "id" FROM "Service" WHERE "id" IN (${Prisma.join(ids)}) ORDER BY "id" FOR UPDATE`);
+  return rows.map(({ id }) => id);
+}
+
 export const executePrismaBooking: BookingExecutor = async <T>(operation: (transaction: BookingTransaction) => Promise<T>) => prisma.$transaction(async (tx) => {
   const transaction: BookingTransaction = {
+    async lockProviders(providerIds) {
+      const ids = [...new Set(providerIds)].sort();
+      if (ids.length === 0) return true;
+      const lockedIds = await lockProviderRows(tx, ids);
+      return lockedIds.length === ids.length;
+    },
     async lockCustomer(customerId) {
       const rows = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`SELECT "id" FROM "User" WHERE "id" = ${customerId} FOR UPDATE`);
       return rows.length > 0;
@@ -33,8 +53,8 @@ export const executePrismaBooking: BookingExecutor = async <T>(operation: (trans
     createAppointment(customerId, providerId, serviceId, startsAt, endsAt) {
       return tx.appointment.create({ data: { customerId, providerId, serviceId, startsAt, endsAt, status: "BOOKED" }, select: appointmentSelection }).then(toCreatedAppointment);
     },
-    async getOwnedAppointmentForUpdate(appointmentId, customerId) {
-      await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`SELECT "id" FROM "Appointment" WHERE "id" = ${appointmentId} AND "customerId" = ${customerId} FOR UPDATE`);
+    async getOwnedAppointmentForUpdate(appointmentId, customerId, lock = true) {
+      if (lock) await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`SELECT "id" FROM "Appointment" WHERE "id" = ${appointmentId} AND "customerId" = ${customerId} FOR UPDATE`);
       const appointment = await tx.appointment.findFirst({ where: { id: appointmentId, customerId }, select: { id: true, customerId: true, providerId: true, serviceId: true, startsAt: true, endsAt: true, status: true } });
       return appointment ? { ...appointment, status: appointment.status } : null;
     },

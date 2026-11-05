@@ -5,6 +5,7 @@ export type TimedIntervalInput = { startsAt: Date | string; endsAt: Date | strin
 export type AppointmentInput = TimedIntervalInput & { status: "BOOKED" | "CANCELLED" | "COMPLETED" | "NO_SHOW" };
 export type Slot = { startsAt: string; endsAt: string };
 export type AvailabilityConfig = { businessTimezone: string; slotIntervalMinutes: number; minNoticeHours: number; maxAdvanceDays: number };
+export type ProposedWorkingDay = { weekday: number; ranges: readonly { startTime: string; endTime: string }[] };
 
 export type GetAvailableSlotsInput = {
   date: string;
@@ -17,6 +18,20 @@ export type GetAvailableSlotsInput = {
 };
 
 type Interval = { start: number; end: number };
+
+export function findAppointmentsOutsideSchedule(appointments: readonly { id: string; startsAt: Date; endsAt: Date }[], days: readonly ProposedWorkingDay[], timezone: string) {
+  const byWeekday = new Map(days.map((day) => [day.weekday, day.ranges]));
+  return appointments.filter((appointment) => {
+    const start = DateTime.fromJSDate(appointment.startsAt, { zone: "utc" }).setZone(timezone);
+    const end = DateTime.fromJSDate(appointment.endsAt, { zone: "utc" }).setZone(timezone);
+    if (!start.isValid || !end.isValid || start.toISODate() !== end.toISODate()) return true;
+    return !(byWeekday.get(start.weekday % 7) ?? []).some((range) => {
+      const rangeStart = DateTime.fromISO(`${start.toISODate()}T${range.startTime}`, { zone: timezone });
+      const rangeEnd = DateTime.fromISO(`${start.toISODate()}T${range.endTime}`, { zone: timezone });
+      return rangeStart.isValid && rangeEnd.isValid && start.toMillis() >= rangeStart.toMillis() && end.toMillis() <= rangeEnd.toMillis();
+    });
+  });
+}
 
 function timestamp(value: Date | string): number {
   return value instanceof Date ? value.getTime() : Date.parse(value);

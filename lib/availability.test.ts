@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getAvailableSlots, type AvailabilityConfig, type WorkingHourInput } from "./availability";
+import { findAppointmentsOutsideSchedule, getAvailableSlots, type AvailabilityConfig, type WorkingHourInput } from "./availability";
 
 const config: AvailabilityConfig = { businessTimezone: "Asia/Manila", slotIntervalMinutes: 15, minNoticeHours: 0, maxAdvanceDays: 60 };
 const monday = "2026-01-05";
@@ -13,6 +13,16 @@ const input = (overrides: Partial<Parameters<typeof getAvailableSlots>[0]> = {})
   now: "2026-01-04T00:00:00.000Z",
   config,
   ...overrides,
+});
+
+describe("findAppointmentsOutsideSchedule", () => {
+  it("detects booked intervals outside proposed local working ranges", () => {
+    const appointments = [
+      { id: "inside", startsAt: new Date("2026-01-05T01:00:00Z"), endsAt: new Date("2026-01-05T01:30:00Z") },
+      { id: "outside", startsAt: new Date("2026-01-05T03:30:00Z"), endsAt: new Date("2026-01-05T04:00:00Z") },
+    ];
+    expect(findAppointmentsOutsideSchedule(appointments, [{ weekday: 1, ranges: [{ startTime: "09:00", endTime: "10:00" }] }], "Asia/Manila").map(({ id }) => id)).toEqual(["outside"]);
+  });
 });
 const starts = (result: ReturnType<typeof getAvailableSlots>) => result.map((slot) => slot.startsAt);
 

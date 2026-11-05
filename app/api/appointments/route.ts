@@ -34,7 +34,7 @@ export async function POST(request: Request) {
       if (error.code === "P2004" && (details.includes("23P01") || details.includes("Appointment_provider_no_booked_overlap"))) {
         return NextResponse.json({ error: "That slot is no longer available." }, { status: 409, headers });
       }
-      if (error.code === "P2002" || error.code === "P2034") return NextResponse.json({ error: "That slot is no longer available. Please choose another time." }, { status: 409, headers });
+      if (error.code === "P2002" || error.code === "P2034") return NextResponse.json({ error: "The selected time slot is no longer available. Please select another schedule." }, { status: 409, headers });
     }
     console.error("Appointment booking failed", error);
     return NextResponse.json({ error: "Unable to complete booking right now." }, { status: 500, headers });

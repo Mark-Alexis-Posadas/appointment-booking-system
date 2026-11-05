@@ -14,6 +14,11 @@ export async function PATCH(_request: Request, { params }: Context) {
 
   try {
     const appointment = await prisma.$transaction(async (tx) => {
+      const target = await tx.appointment.findUnique({ where: { id }, select: { providerId: true } });
+      if (!target) return { kind: "not-found" as const };
+      const providerLocked = await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`SELECT "id" FROM "Provider" WHERE "id" = ${target.providerId} FOR UPDATE`);
+      if (!providerLocked.length) return { kind: "not-found" as const };
+      if (session.user.role === "CUSTOMER") await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`SELECT "id" FROM "User" WHERE "id" = ${session.user.id} FOR UPDATE`);
       await tx.$queryRaw<Array<{ id: string }>>(Prisma.sql`SELECT "id" FROM "Appointment" WHERE "id" = ${id} FOR UPDATE`);
       const current = await tx.appointment.findUnique({ where: { id }, select: { id: true, customerId: true, startsAt: true, status: true } });
       if (!current) return { kind: "not-found" as const };
@@ -26,6 +31,7 @@ export async function PATCH(_request: Request, { params }: Context) {
     if (appointment.kind === "rejected") return NextResponse.json({ error: appointment.decision.message }, { status: appointment.decision.status });
     return NextResponse.json({ appointment: appointment.appointment });
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return NextResponse.json({ error: "The appointment changed at the same time. Refresh and try again." }, { status: 409 });
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return NextResponse.json({ error: "Appointment changed while cancelling. Refresh and try again." }, { status: 409 });
     console.error("Appointment cancellation failed", error);
     return NextResponse.json({ error: "Unable to cancel appointment right now." }, { status: 500 });

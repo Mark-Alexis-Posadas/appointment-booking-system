@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { BookingError, createBooking, rescheduleBooking, type BookingExecutor, type BookingService, type BookingTransaction, type CreatedAppointment, type ReschedulableAppointment } from "./booking";
+import { BookingError, createBooking, isProviderOverlapConstraintError, rescheduleBooking, type BookingExecutor, type BookingService, type BookingTransaction, type CreatedAppointment, type ReschedulableAppointment } from "./booking";
+import { Prisma } from "@/generated/prisma";
 import type { AppointmentInput, AvailabilityConfig, TimedIntervalInput, WorkingHourInput } from "./availability";
 
 const authStub = vi.hoisted(() => ({ auth: vi.fn<() => Promise<unknown>>() }));
@@ -10,9 +11,24 @@ const request = { customerId: "customer-1", providerId: "provider-1", serviceId:
 const service: BookingService = { providerId: "provider-1", providerName: "Provider One", serviceId: "service-1", serviceName: "Consultation", serviceDurationMinutes: 30, servicePrice: "25.00" };
 const hours: WorkingHourInput[] = [{ weekday: 1, startTime: "09:00", endTime: "10:00" }];
 
+describe("provider overlap constraint error classification", () => {
+  const knownError = (code: string, meta: Record<string, unknown>) => new Prisma.PrismaClientKnownRequestError("database error", { code, clientVersion: "test", meta });
+
+  it("recognizes the named PostgreSQL provider overlap exclusion", () => {
+    expect(isProviderOverlapConstraintError(knownError("P2004", { constraint: "Appointment_provider_no_booked_overlap" }))).toBe(true);
+    expect(isProviderOverlapConstraintError(knownError("P2004", { code: "23P01" }))).toBe(true);
+  });
+
+  it("does not classify unrelated P2004 errors or different Prisma codes as slot conflicts", () => {
+    expect(isProviderOverlapConstraintError(knownError("P2004", { constraint: "some_other_constraint" }))).toBe(false);
+    expect(isProviderOverlapConstraintError(knownError("P2034", { code: "23P01" }))).toBe(false);
+  });
+});
+
 function makeExecutor(options: { active?: boolean; hours?: WorkingHourInput[]; timeOff?: TimedIntervalInput[]; appointments?: AppointmentInput[]; customerOverlap?: boolean } = {}) {
   const state = { appointments: [...(options.appointments ?? [])] };
   const execute: BookingExecutor = async <T>(operation: (transaction: BookingTransaction) => Promise<T>): Promise<T> => operation({
+    async lockProviders() { return true; },
     async lockCustomer() { return true; },
     async getActiveProviderService() { return options.active === false ? null : service; },
     async getWorkingHours() { return options.hours ?? hours; },
@@ -95,6 +111,7 @@ function makeRescheduleExecutor(otherAppointments: Array<{ id: string; status: "
   const original: ReschedulableAppointment = { id: "appointment-old", customerId: request.customerId, providerId: request.providerId, serviceId: request.serviceId, startsAt: new Date("2026-01-05T01:00:00Z"), endsAt: new Date("2026-01-05T01:30:00Z"), status: "BOOKED" };
   const state = { current: original, others: otherAppointments };
   const execute: BookingExecutor = async <T>(operation: (transaction: BookingTransaction) => Promise<T>): Promise<T> => operation({
+    async lockProviders() { return true; },
     async lockCustomer() { return true; },
     async getActiveProviderService() { return service; },
     async getWorkingHours() { return [{ weekday: 1, startTime: "09:00", endTime: "11:00" }]; },
